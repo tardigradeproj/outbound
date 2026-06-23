@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"testing"
@@ -48,14 +48,14 @@ func TestConst(t *testing.T) {
 		t.Fatalf("bad: %v", goAwayInternalErr)
 	}
 
-	if headerSize != 12 {
+	if headerSize != 13 {
 		t.Fatalf("bad header size")
 	}
 }
 
 func TestEncodeDecode(t *testing.T) {
 	hdr := header(make([]byte, headerSize))
-	hdr.encode(typeWindowUpdate, flagACK|flagRST, 1234, 4321)
+	hdr.encode(typeWindowUpdate, flagACK|flagRST, 1234, 4321, 1)
 
 	if hdr.Version() != protoVersion {
 		t.Fatalf("bad: %v", hdr)
@@ -70,6 +70,9 @@ func TestEncodeDecode(t *testing.T) {
 		t.Fatalf("bad: %v", hdr)
 	}
 	if hdr.Length() != 4321 {
+		t.Fatalf("bad: %v", hdr)
+	}
+	if hdr.UpstreamId() != 1 {
 		t.Fatalf("bad: %v", hdr)
 	}
 }

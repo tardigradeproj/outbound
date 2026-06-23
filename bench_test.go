@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"fmt"
@@ -46,7 +46,7 @@ func BenchmarkAccept(b *testing.B) {
 	}()
 
 	for i := 0; i < b.N; i++ {
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			b.Fatalf("err: %v", err)
 		}
@@ -147,7 +147,7 @@ func benchmarkSendRecv(b *testing.B, sendSize, recvSize int) {
 		errCh <- nil
 	}()
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		b.Fatalf("err: %v", err)
 	}
@@ -228,7 +228,7 @@ func benchmarkSendRecvParallel(b *testing.B, sendSize int) {
 			errCh <- nil
 		}()
 
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			b.Fatalf("err: %v", err)
 		}

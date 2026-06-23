@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"bytes"
@@ -62,11 +62,12 @@ type Stream struct {
 	// closeTimer is set with stateLock held to honor the StreamCloseTimeout
 	// setting on Session.
 	closeTimer *time.Timer
+	upstreamId uint8
 }
 
 // newStream is used to construct a new stream within
 // a given session for an ID
-func newStream(session *Session, id uint32, state streamState) *Stream {
+func newStream(session *Session, id uint32, state streamState, upstreamId uint8) *Stream {
 	s := &Stream{
 		id:           id,
 		session:      session,
@@ -80,6 +81,7 @@ func newStream(session *Session, id uint32, state streamState) *Stream {
 		recvNotifyCh: make(chan struct{}, 1),
 		sendNotifyCh: make(chan struct{}, 1),
 		establishCh:  make(chan struct{}, 1),
+		upstreamId:   upstreamId,
 	}
 	s.readDeadline.Store(time.Time{})
 	s.writeDeadline.Store(time.Time{})
@@ -94,6 +96,11 @@ func (s *Stream) Session() *Session {
 // StreamID returns the ID of this stream
 func (s *Stream) StreamID() uint32 {
 	return s.id
+}
+
+// UpstreamID returns the ID of the target upstream
+func (s *Stream) UpstreamID() uint8 {
+	return s.upstreamId
 }
 
 // Read is used to read from the stream. It is safe to call Write, Read, and/or
@@ -218,7 +225,7 @@ START:
 	body = b[:max]
 
 	// Send the header
-	s.sendHdr.encode(typeData, flags, s.id, max)
+	s.sendHdr.encode(typeData, flags, s.id, max, s.upstreamId)
 	if err = s.session.waitForSendErr(s.sendHdr, body, s.sendErr); err != nil {
 		if errors.Is(err, ErrSessionShutdown) || errors.Is(err, ErrConnectionWriteTimeout) {
 			// Message left in ready queue, header re-use is unsafe.
@@ -278,7 +285,6 @@ func (s *Stream) sendFlags() uint16 {
 func (s *Stream) sendWindowUpdate() error {
 	s.controlHdrLock.Lock()
 	defer s.controlHdrLock.Unlock()
-
 	// Determine the delta update
 	max := s.session.config.MaxStreamWindowSize
 	var bufLen uint32
@@ -300,9 +306,8 @@ func (s *Stream) sendWindowUpdate() error {
 	// Update our window
 	s.recvWindow += delta
 	s.recvLock.Unlock()
-
 	// Send the header
-	s.controlHdr.encode(typeWindowUpdate, flags, s.id, delta)
+	s.controlHdr.encode(typeWindowUpdate, flags, s.id, delta, s.upstreamId)
 	if err := s.session.waitForSendErr(s.controlHdr, nil, s.controlErr); err != nil {
 		if errors.Is(err, ErrSessionShutdown) || errors.Is(err, ErrConnectionWriteTimeout) {
 			// Message left in ready queue, header re-use is unsafe.
@@ -320,7 +325,7 @@ func (s *Stream) sendClose() error {
 
 	flags := s.sendFlags()
 	flags |= flagFIN
-	s.controlHdr.encode(typeWindowUpdate, flags, s.id, 0)
+	s.controlHdr.encode(typeWindowUpdate, flags, s.id, 0, s.upstreamId)
 	if err := s.session.waitForSendErr(s.controlHdr, nil, s.controlErr); err != nil {
 		if errors.Is(err, ErrSessionShutdown) || errors.Is(err, ErrConnectionWriteTimeout) {
 			// Message left in ready queue, header re-use is unsafe.
@@ -402,7 +407,7 @@ func (s *Stream) closeTimeout() {
 	s.sendLock.Lock()
 	defer s.sendLock.Unlock()
 	hdr := header(make([]byte, headerSize))
-	hdr.encode(typeWindowUpdate, flagRST, s.id, 0)
+	hdr.encode(typeWindowUpdate, flagRST, s.id, 0, s.upstreamId)
 	_ = s.session.sendNoWait(hdr)
 }
 
@@ -454,7 +459,7 @@ func (s *Stream) processFlags(flags uint16) error {
 			closeStream = true
 			s.notifyWaiting()
 		default:
-			s.session.logger.Printf("[ERR] yamux: unexpected FIN flag in state %d", s.state)
+			s.session.logger.Printf("[ERR] outbound: unexpected FIN flag in state %d", s.state)
 			return ErrUnexpectedFlag
 		}
 	}
@@ -504,7 +509,7 @@ func (s *Stream) readData(hdr header, flags uint16, conn io.Reader) error {
 	s.recvLock.Lock()
 
 	if length > s.recvWindow {
-		s.session.logger.Printf("[ERR] yamux: receive window exceeded (stream: %d, remain: %d, recv: %d)", s.id, s.recvWindow, length)
+		s.session.logger.Printf("[ERR] outbound: receive window exceeded (stream: %d, remain: %d, recv: %d)", s.id, s.recvWindow, length)
 		s.recvLock.Unlock()
 		return ErrRecvWindowExceeded
 	}
@@ -516,7 +521,7 @@ func (s *Stream) readData(hdr header, flags uint16, conn io.Reader) error {
 	}
 	copiedLength, err := io.Copy(s.recvBuf, conn)
 	if err != nil {
-		s.session.logger.Printf("[ERR] yamux: Failed to read stream data: %v", err)
+		s.session.logger.Printf("[ERR] outbound: Failed to read stream data: %v", err)
 		s.recvLock.Unlock()
 		return err
 	}

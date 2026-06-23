@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"fmt"
@@ -14,17 +14,17 @@ type hasAddr interface {
 	RemoteAddr() net.Addr
 }
 
-// yamuxAddr is used when we cannot get the underlying address
-type yamuxAddr struct {
+// outboundAddr is used when we cannot get the underlying address
+type outboundAddr struct {
 	Addr string
 }
 
-func (*yamuxAddr) Network() string {
-	return "yamux"
+func (*outboundAddr) Network() string {
+	return "outbound"
 }
 
-func (y *yamuxAddr) String() string {
-	return fmt.Sprintf("yamux:%s", y.Addr)
+func (y *outboundAddr) String() string {
+	return fmt.Sprintf("outbound:%s", y.Addr)
 }
 
 // Addr is used to get the address of the listener.
@@ -37,7 +37,7 @@ func (s *Session) Addr() net.Addr {
 func (s *Session) LocalAddr() net.Addr {
 	addr, ok := s.conn.(hasAddr)
 	if !ok {
-		return &yamuxAddr{"local"}
+		return &outboundAddr{"local"}
 	}
 	return addr.LocalAddr()
 }
@@ -47,7 +47,7 @@ func (s *Session) LocalAddr() net.Addr {
 func (s *Session) RemoteAddr() net.Addr {
 	addr, ok := s.conn.(hasAddr)
 	if !ok {
-		return &yamuxAddr{"remote"}
+		return &outboundAddr{"remote"}
 	}
 	return addr.RemoteAddr()
 }
