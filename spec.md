@@ -1,23 +1,38 @@
 # Specification
 
-We use this document to detail the internal specification of Yamux.
-This is used both as a guide for implementing Yamux, but also for
+We use this document to detail the internal specification of Outbound.
+This is used both as a guide for implementing Outbound, but also for
 alternative interoperable libraries to be built.
 
 # Framing
 
-Yamux uses a streaming connection underneath, but imposes a message
+Outbound uses a streaming connection underneath, but imposes a message
 framing so that it can be shared between many logical streams. Each
-frame contains a header like:
+frame contains an extended header of 13 bytes:
 
 * Version (8 bits)
 * Type (8 bits)
 * Flags (16 bits)
 * StreamID (32 bits)
 * Length (32 bits)
+* UpstreamID (8 bits)
 
-This means that each header has a 12 byte overhead.
 All fields are encoded in network order (big endian).
+
+```
+ 0               1               2               3
+ 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+│    Version    │     Type      │            Flags              │
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+│                           StreamID                            │
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+│                            Length                             │
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+│  UpstreamID   │
++-+-+-+-+-+-+-+-+
+```
+
 Each field is described below:
 
 ## Version Field
@@ -77,9 +92,17 @@ The meaning of the length field depends on the message type:
 * Ping - Contains an opaque value, echoed back
 * Go Away - Contains an error code
 
+## UpstreamID Field
+
+The UpstreamID field identifies the local upstream service that the
+stream should be routed to on the receiving side. It is only meaningful
+on SYN frames; all subsequent frames on an established stream should
+set it to 0. The receiver uses this value to look up the registered
+upstream and establish the proxied connection before data begins to flow.
+
 # Message Flow
 
-There is no explicit connection setup, as Yamux relies on an underlying
+There is no explicit connection setup, as Outbound relies on an underlying
 transport to be provided. However, there is a distinction between client
 and server side of the connection.
 
@@ -117,11 +140,11 @@ hard close a stream immediately.
 
 ## Flow Control
 
-When Yamux is initially starts each stream with a 256KB window size.
+When Outbound is initially starts each stream with a 256KB window size.
 There is no window size for the session.
 
 To prevent the streams from stalling, window update frames should be
-sent regularly. Yamux can be configured to provide a larger limit for
+sent regularly. Outbound can be configured to provide a larger limit for
 windows sizes. Both sides assume the initial 256KB window, but can
 immediately send a window update as part of the SYN/ACK indicating a
 larger window.

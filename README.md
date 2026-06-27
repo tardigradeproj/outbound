@@ -1,12 +1,10 @@
-# Yamux
+# Outbound
 
-Yamux (Yet another Multiplexer) is a multiplexing library for Golang.
-It relies on an underlying connection to provide reliability
-and ordering, such as TCP or Unix domain sockets, and provides
-stream-oriented multiplexing. It is inspired by SPDY but is not
-interoperable with it.
+Outbound lets you expose multiple NAT'd services on a single port. 
+A Go fork of [Yamux](https://github.com/hashicorp/yamux), it layers stream-oriented multiplexing over a 
+reliable, ordered transport such as TCP or a Unix domain socket.
 
-Yamux features include:
+Outbound features include:
 
 * Bi-directional streams
   * Streams can be opened by either client or server
@@ -19,68 +17,71 @@ Yamux features include:
   * Enables persistent connections over a load balancer
 * Efficient
   * Enables thousands of logical streams with low overhead
+* Targets
+  * Enables TCP communication with multiple services using a single port
 
 ## Documentation
 
-For complete documentation, see the associated [Godoc](http://godoc.org/github.com/hashicorp/yamux).
+For complete documentation, see the associated [Godoc](http://godoc.org/github.com/tardigradeproj/outbound).
 
 ## Specification
 
-The full specification for Yamux is provided in the `spec.md` file.
+The full specification for Outbound is provided in the `spec.md` file.
 It can be used as a guide to implementors of interoperable libraries.
 
 ## Usage
 
-Using Yamux is remarkably simple:
+### Tunnel — expose local services over a single multiplexed connection
+
+`Tunnel` wraps a session and routes incoming streams to registered local upstreams by ID.
+This lets a worker behind NAT register services that a cloud host can dial by name.
 
 ```go
-
-func client() {
-    // Get a TCP connection
-    conn, err := net.Dial(...)
+// Worker side (behind NAT): register a local HTTP service and serve streams.
+func worker() {
+    conn, err := net.Dial("tcp", "cloud-host:1234")
     if err != nil {
         panic(err)
     }
 
-    // Setup client side of yamux
-    session, err := yamux.Client(conn, nil)
+    session, err := outbound.Client(conn, nil)
     if err != nil {
         panic(err)
     }
 
-    // Open a new stream
-    stream, err := session.Open()
-    if err != nil {
-        panic(err)
-    }
+    tunnel := outbound.New(session)
+    tunnel.Register(outbound.Upstream{
+        Id:   1,
+        Name: "http",
+        Dial: outbound.TCPUpstream("127.0.0.1:8080"),
+    })
 
-    // Stream implements net.Conn
-    stream.Write([]byte("ping"))
+    // Blocks until the session closes or ctx is cancelled.
+    tunnel.Serve(context.Background())
 }
 
-func server() {
-    // Accept a TCP connection
+// Cloud side: dial the worker's upstream by ID and use it like a plain net.Conn.
+func cloud() {
     conn, err := listener.Accept()
     if err != nil {
         panic(err)
     }
 
-    // Setup server side of yamux
-    session, err := yamux.Server(conn, nil)
+    session, err := outbound.Server(conn, nil)
     if err != nil {
         panic(err)
     }
 
-    // Accept a stream
-    stream, err := session.Accept()
+    tunnel := outbound.New(session)
+
+    // Opens a transparent pipe to the worker's upstream 1 (127.0.0.1:8080).
+    c, err := tunnel.Dial(context.Background(), 1)
     if err != nil {
         panic(err)
     }
 
-    // Listen for a message
     buf := make([]byte, 4)
-    stream.Read(buf)
+    c.Read(buf) // reads data sent by the upstream
 }
-
 ```
 

@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Config is used to tune the Yamux session
+// Config is used to tune the Outbound session
 type Config struct {
 	// AcceptBacklog is used to limit how many streams may be
 	// waiting an accept.
@@ -57,8 +57,7 @@ type Config struct {
 }
 
 func (c *Config) Clone() *Config {
-	c2 := *c
-	return &c2
+	return new(*c)
 }
 
 // DefaultConfig is used to return a default configuration

@@ -6,7 +6,11 @@
 # Folders
 _obj
 _test
-
+tunnel_test-cases.md
+stream.md
+lifecycle.md
+.idea
+.DS_Store
 # Architecture specific extensions/prefixes
 *.[568vq]
 [568vq].out

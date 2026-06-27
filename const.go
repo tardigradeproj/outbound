@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"encoding/binary"
@@ -79,6 +79,8 @@ var (
 
 	// ErrKeepAliveTimeout is sent if a missed keepalive caused the stream close
 	ErrKeepAliveTimeout = fmt.Errorf("keepalive timeout")
+	// ErrUpstreamNotFound is sent if given upstream id was not found on destiny
+	ErrUpstreamNotFound = fmt.Errorf("keepalive timeout")
 )
 
 const (
@@ -140,13 +142,14 @@ const (
 )
 
 const (
-	sizeOfVersion  = 1
-	sizeOfType     = 1
-	sizeOfFlags    = 2
-	sizeOfStreamID = 4
-	sizeOfLength   = 4
-	headerSize     = sizeOfVersion + sizeOfType + sizeOfFlags +
-		sizeOfStreamID + sizeOfLength
+	sizeOfVersion    = 1
+	sizeOfType       = 1
+	sizeOfFlags      = 2
+	sizeOfStreamID   = 4
+	sizeOfLength     = 4
+	SizeOfUpstreamId = 1
+	headerSize       = sizeOfVersion + sizeOfType + sizeOfFlags +
+		sizeOfStreamID + sizeOfLength + SizeOfUpstreamId
 )
 
 type header []byte
@@ -170,15 +173,19 @@ func (h header) StreamID() uint32 {
 func (h header) Length() uint32 {
 	return binary.BigEndian.Uint32(h[8:12])
 }
-
-func (h header) String() string {
-	return fmt.Sprintf("Vsn:%d Type:%d Flags:%d StreamID:%d Length:%d",
-		h.Version(), h.MsgType(), h.Flags(), h.StreamID(), h.Length())
+func (h header) UpstreamId() uint8 {
+	return h[12]
 }
 
-func (h header) encode(msgType uint8, flags uint16, streamID uint32, length uint32) {
+func (h header) String() string {
+	return fmt.Sprintf("Vsn:%d Type:%d Flags:%d StreamID:%d Length:%d UpstreamId:%d",
+		h.Version(), h.MsgType(), h.Flags(), h.StreamID(), h.Length(), h.UpstreamId())
+}
+
+func (h header) encode(msgType uint8, flags uint16, streamID uint32, length uint32, upstreamId uint8) {
 	h[0] = protoVersion
 	h[1] = msgType
+	h[12] = upstreamId
 	binary.BigEndian.PutUint16(h[2:4], flags)
 	binary.BigEndian.PutUint32(h[4:8], streamID)
 	binary.BigEndian.PutUint32(h[8:12], length)

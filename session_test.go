@@ -1,7 +1,7 @@
 // Copyright IBM Corp. 2014, 2025
 // SPDX-License-Identifier: MPL-2.0
 
-package yamux
+package outbound
 
 import (
 	"bytes"
@@ -334,7 +334,7 @@ func TestCloseBeforeAck(t *testing.T) {
 		client, server := testClientServerConfig(t, clientConn, serverConn, cfg, cfg.Clone())
 
 		for i := 0; i < 8; i++ {
-			s, err := client.OpenStream()
+			s, err := client.OpenStream(uint8(i) + 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -351,7 +351,7 @@ func TestCloseBeforeAck(t *testing.T) {
 
 		errCh := make(chan error, 1)
 		go func() {
-			s, err := client.OpenStream()
+			s, err := client.OpenStream(12)
 			if err != nil {
 				errCh <- err
 				return
@@ -394,8 +394,17 @@ func TestAccept(t *testing.T) {
 
 	go acceptOne(server.AcceptStream, 1)
 	go acceptOne(client.AcceptStream, 2)
-	go acceptOne(server.OpenStream, 2)
-	go acceptOne(client.OpenStream, 1)
+	go acceptOne(client.AcceptStream, 4)
+
+	go acceptOne(func() (*Stream, error) {
+		return server.OpenStream(1)
+	}, 2)
+	go acceptOne(func() (*Stream, error) {
+		return server.OpenStream(1)
+	}, 4)
+	go acceptOne(func() (*Stream, error) {
+		return client.OpenStream(1)
+	}, 1)
 
 	drainErrorsUntil(t, errCh, 4, time.Second, "timeout")
 }
@@ -413,7 +422,7 @@ func TestOpenStreamTimeout(t *testing.T) {
 		client, _ := testClientServerConfig(t, clientConn, serverConn, clientConf, serverConf)
 
 		// Open a single stream without a server to acknowledge it.
-		s, err := client.OpenStream()
+		s, err := client.OpenStream(1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -428,11 +437,11 @@ func TestOpenStreamTimeout(t *testing.T) {
 		case net.Conn:
 			dest = conn.RemoteAddr().String()
 		case *pipeConn:
-			dest = "yamux:remote"
+			dest = "outbound:remote"
 		default:
 			t.Fatalf("unsupported connection type %T - please update test", conn)
 		}
-		exp := fmt.Sprintf("[ERR] yamux: aborted stream open (destination=%s): i/o deadline reached", dest)
+		exp := fmt.Sprintf("[ERR] outbound: aborted stream open (destination=%s): i/o deadline reached", dest)
 
 		if !clientLogs.match([]string{exp}) {
 			t.Fatalf("server log incorect: %v\nexpected: %v", clientLogs.logs(), exp)
@@ -472,7 +481,7 @@ func TestClose_closeTimeout(t *testing.T) {
 	var clientStream *Stream
 	go func() {
 		var err error
-		clientStream, err = client.OpenStream()
+		clientStream, err = client.OpenStream(1)
 		errCh <- err
 	}()
 
@@ -520,7 +529,7 @@ func TestNonNilInterface(t *testing.T) {
 		t.Error("bad: accept should return a connection of nil value")
 	}
 
-	conn, err = server.Open()
+	conn, err = server.Open(1)
 	if err == nil || !errors.Is(err, ErrSessionShutdown) || conn != nil {
 		t.Fatal("bad: open should return a shutdown error and a connection of nil value")
 	}
@@ -570,7 +579,7 @@ func TestSendData_Small(t *testing.T) {
 
 	// Open a client and perform some writes before closing
 	go func() {
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -668,7 +677,7 @@ func TestSendData_Large(t *testing.T) {
 	}()
 
 	go func() {
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -704,7 +713,7 @@ func TestGoAway(t *testing.T) {
 	// Give the other side time to process the goaway after receiving it.
 	time.Sleep(100 * time.Millisecond)
 
-	_, err := client.Open()
+	_, err := client.Open(1)
 	if err != ErrRemoteGoAway {
 		t.Fatalf("err: %v", err)
 	}
@@ -743,7 +752,7 @@ func TestManyStreams(t *testing.T) {
 		}
 	}
 	sender := func(id int) {
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -828,7 +837,7 @@ func TestManyStreams_PingPong(t *testing.T) {
 		}
 	}
 	sender := func() {
-		stream, err := client.OpenStream()
+		stream, err := client.OpenStream(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -882,7 +891,7 @@ func TestHalfClose(t *testing.T) {
 	testConnTypes(t, func(t testing.TB, clientConn, serverConn io.ReadWriteCloser) {
 		client, server := testClientServerConfig(t, clientConn, serverConn, testConf(), testConf())
 
-		clientStream, err := client.Open()
+		clientStream, err := client.Open(1)
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -945,7 +954,7 @@ func TestHalfCloseSessionShutdown(t *testing.T) {
 		data[idx] = byte(idx % 256)
 	}
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -990,7 +999,7 @@ func TestHalfCloseSessionShutdown(t *testing.T) {
 func TestReadDeadline(t *testing.T) {
 	client, server := testClientServer(t)
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -1023,9 +1032,9 @@ func TestReadDeadline(t *testing.T) {
 	// from the connection.
 	//
 	// We assert that we return an error meeting the interface to avoid
-	// accidently breaking yamux session compatability with the standard
+	// accidently breaking outbound session compatability with the standard
 	// library's http server implementation.
-	if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
+	if netErr, ok := errors.AsType[net.Error](err); !ok || !netErr.Timeout() {
 		t.Fatalf("reading timeout error is expected to implement net.Error and return true when calling Timeout()")
 	}
 }
@@ -1033,7 +1042,7 @@ func TestReadDeadline(t *testing.T) {
 func TestReadDeadline_BlockedRead(t *testing.T) {
 	client, server := testClientServer(t)
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -1075,7 +1084,7 @@ func TestReadDeadline_BlockedRead(t *testing.T) {
 func TestWriteDeadline(t *testing.T) {
 	client, server := testClientServer(t)
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -1106,7 +1115,7 @@ func TestWriteDeadline(t *testing.T) {
 func TestWriteDeadline_BlockedWrite(t *testing.T) {
 	client, server := testClientServer(t)
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -1160,7 +1169,7 @@ func TestBacklogExceeded(t *testing.T) {
 	// Fill the backlog
 	max := client.config.AcceptBacklog
 	for i := 0; i < max; i++ {
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -1174,7 +1183,7 @@ func TestBacklogExceeded(t *testing.T) {
 	// Attempt to open a new stream
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := client.Open()
+		_, err := client.Open(1)
 		errCh <- err
 	}()
 
@@ -1262,7 +1271,7 @@ func TestKeepAlive_Timeout(t *testing.T) {
 		t.Fatalf("server should have closed")
 	}
 
-	if !serverLogs.match([]string{"[ERR] yamux: keepalive failed: i/o deadline reached"}) {
+	if !serverLogs.match([]string{"[ERR] outbound: keepalive failed: i/o deadline reached"}) {
 		t.Fatalf("server log incorect: %v", serverLogs.logs())
 	}
 }
@@ -1274,7 +1283,7 @@ func TestLargeWindow(t *testing.T) {
 	clientConn, serverConn := testConnTLS(t)
 	client, server := testClientServerConfig(t, clientConn, serverConn, conf, conf.Clone())
 
-	stream, err := client.Open()
+	stream, err := client.Open(1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -1353,7 +1362,7 @@ func TestSendData_VeryLarge(t *testing.T) {
 	}
 	for i := 0; i < workers; i++ {
 		go func() {
-			stream, err := client.Open()
+			stream, err := client.Open(1)
 			if err != nil {
 				errCh <- err
 				return
@@ -1404,7 +1413,7 @@ func TestBacklogExceeded_Accept(t *testing.T) {
 
 	// Fill the backlog
 	for i := 0; i < max; i++ {
-		stream, err := client.Open()
+		stream, err := client.Open(1)
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -1454,7 +1463,7 @@ func TestSession_WindowUpdateWriteDuringRead(t *testing.T) {
 	// listen to the flood from the server, which should time out since
 	// it won't be able to send the window update.
 	go func() {
-		stream, err := client.OpenStream()
+		stream, err := client.OpenStream(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -1524,7 +1533,7 @@ func TestSession_PartialReadWindowUpdate(t *testing.T) {
 			errCh <- err
 		}()
 
-		stream, err := client.OpenStream()
+		stream, err := client.OpenStream(1)
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -1572,7 +1581,7 @@ func TestSession_sendNoWait_Timeout(t *testing.T) {
 	// The client will open the stream and then block outbound writes, we'll
 	// probe sendNoWait once it gets into that state.
 	go func() {
-		stream, err := client.OpenStream()
+		stream, err := client.OpenStream(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -1584,7 +1593,7 @@ func TestSession_sendNoWait_Timeout(t *testing.T) {
 		defer conn.writeBlocker.Unlock()
 
 		hdr := header(make([]byte, headerSize))
-		hdr.encode(typePing, flagACK, 0, 0)
+		hdr.encode(typePing, flagACK, 0, 0, 0)
 		for {
 			err = client.sendNoWait(hdr)
 			if err == nil {
@@ -1629,7 +1638,7 @@ func TestSession_PingOfDeath(t *testing.T) {
 		conn.writeBlocker.Lock()
 		for {
 			hdr := header(make([]byte, headerSize))
-			hdr.encode(typePing, 0, 0, 0)
+			hdr.encode(typePing, 0, 0, 0, 0)
 			err = server.sendNoWait(hdr)
 			if err == nil {
 				continue
@@ -1649,7 +1658,7 @@ func TestSession_PingOfDeath(t *testing.T) {
 	// can no longer write. This makes sure the server doesn't deadlock reads
 	// while trying to reply to the ping with no ability to write.
 	go func() {
-		stream, err := client.OpenStream()
+		stream, err := client.OpenStream(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -1675,7 +1684,28 @@ func TestSession_PingOfDeath(t *testing.T) {
 
 	drainErrorsUntil(t, errCh, 2, 0, "")
 }
+func TestServerReceivesUpstreamId(t *testing.T) {
+	conf := testConf()
+	clientConn, serverConn := testConnPipe(t)
+	client, server := testClientServerConfig(t, clientConn, serverConn, conf, conf.Clone())
 
+	var expectedUpstreamId uint8 = 12
+
+	clientStream, err := client.OpenStream(expectedUpstreamId)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer clientStream.Close()
+
+	stream, err := server.AcceptStream()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if stream.upstreamId != expectedUpstreamId {
+		t.Fatalf("expected upstream id %d, got %d", expectedUpstreamId, stream.upstreamId)
+	}
+	defer stream.Close()
+}
 func TestSession_ConnectionWriteTimeout(t *testing.T) {
 	conf := testConfNoKeepAlive()
 
@@ -1697,7 +1727,7 @@ func TestSession_ConnectionWriteTimeout(t *testing.T) {
 	// The client will open the stream and then block outbound writes, we'll
 	// tee up a write and make sure it eventually times out.
 	go func() {
-		stream, err := client.OpenStream()
+		stream, err := client.OpenStream(1)
 		if err != nil {
 			errCh <- err
 			return
@@ -1735,7 +1765,7 @@ func TestCancelAccept(t *testing.T) {
 
 	go func() {
 		stream, err := server.AcceptStreamWithContext(ctx)
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			errCh <- err
 			return
 		}
