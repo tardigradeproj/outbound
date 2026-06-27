@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Config is used to tune the Yamux session
+// Config is used to tune the Outbound session
 type Config struct {
 	// AcceptBacklog is used to limit how many streams may be
 	// waiting an accept.

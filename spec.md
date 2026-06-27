@@ -1,7 +1,7 @@
 # Specification
 
-We use this document to detail the internal specification of Yamux.
-This is used both as a guide for implementing Yamux, but also for
+We use this document to detail the internal specification of Outbound.
+This is used both as a guide for implementing Outbound, but also for
 alternative interoperable libraries to be built.
 
 # Framing
@@ -102,7 +102,7 @@ upstream and establish the proxied connection before data begins to flow.
 
 # Message Flow
 
-There is no explicit connection setup, as Yamux relies on an underlying
+There is no explicit connection setup, as Outbound relies on an underlying
 transport to be provided. However, there is a distinction between client
 and server side of the connection.
 
@@ -140,11 +140,11 @@ hard close a stream immediately.
 
 ## Flow Control
 
-When Yamux is initially starts each stream with a 256KB window size.
+When Outbound is initially starts each stream with a 256KB window size.
 There is no window size for the session.
 
 To prevent the streams from stalling, window update frames should be
-sent regularly. Yamux can be configured to provide a larger limit for
+sent regularly. Outbound can be configured to provide a larger limit for
 windows sizes. Both sides assume the initial 256KB window, but can
 immediately send a window update as part of the SYN/ACK indicating a
 larger window.
