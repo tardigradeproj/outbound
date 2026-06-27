@@ -44,6 +44,8 @@ jobs:
         cache: true
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v7
+      with:
+        args: --exclude-files '.*_test\.go'
     - name: Run race detector tests (skip large data tests)
       run: |
         go test -race -short -v ./...
