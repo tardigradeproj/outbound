@@ -386,7 +386,7 @@ SEND_CLOSE:
 	}
 
 	s.stateLock.Unlock()
-	s.sendClose()
+	_ = s.sendClose()
 	s.notifyWaiting()
 	if closeStream {
 		s.session.closeStream(s.id)

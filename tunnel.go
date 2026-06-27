@@ -86,13 +86,12 @@ func (t *Tunnel) Close() error {
 }
 
 func (t *Tunnel) handleStream(ctx context.Context, stream *Stream) {
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	t.mu.RLock()
 	upstream, ok := t.upstreams[stream.UpstreamID()]
 	t.mu.RUnlock()
 	if !ok {
-		stream.Close()
 		return
 	}
 
@@ -100,7 +99,7 @@ func (t *Tunnel) handleStream(ctx context.Context, stream *Stream) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	tunnelPipe(stream, conn)
 }
@@ -112,8 +111,8 @@ func tunnelPipe(a, b net.Conn) {
 	cp := func(dst, src net.Conn) {
 		_, _ = io.Copy(dst, src)
 		// Close both ends so the other direction unblocks.
-		dst.Close()
-		src.Close()
+		_ = dst.Close()
+		_ = src.Close()
 		done <- struct{}{}
 	}
 	go cp(a, b)
