@@ -57,8 +57,7 @@ type Config struct {
 }
 
 func (c *Config) Clone() *Config {
-	c2 := *c
-	return &c2
+	return new(*c)
 }
 
 // DefaultConfig is used to return a default configuration

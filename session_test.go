@@ -1034,8 +1034,7 @@ func TestReadDeadline(t *testing.T) {
 	// We assert that we return an error meeting the interface to avoid
 	// accidently breaking outbound session compatability with the standard
 	// library's http server implementation.
-	var netErr net.Error
-	if !errors.As(err, &netErr) || !netErr.Timeout() {
+	if netErr, ok := errors.AsType[net.Error](err); !ok || !netErr.Timeout() {
 		t.Fatalf("reading timeout error is expected to implement net.Error and return true when calling Timeout()")
 	}
 }
