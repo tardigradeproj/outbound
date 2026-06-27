@@ -1,5 +1,9 @@
 # Outbound
 
+Outbound is a secure, NAT-traversing TCP multiplexer that enables seamless, bi-directional Kubernetes control plane communication with isolated worker nodes. It 
+establishes resilient reverse tunnels initiated by the worker, allowing native API functions like `kubectl exec`, logs, and metrics scraping without 
+exposing inbound ports.
+
 Outbound lets you expose multiple NAT'd services on a single port. 
 A Go fork of [Yamux](https://github.com/hashicorp/yamux), it layers stream-oriented multiplexing over a 
 reliable, ordered transport such as TCP or a Unix domain socket.
