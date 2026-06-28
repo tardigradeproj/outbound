@@ -35,8 +35,8 @@ type Tunnel struct {
 	upstreams map[uint8]Upstream
 }
 
-// New creates a Tunnel around an existing outbound session.
-func New(session *Session) *Tunnel {
+// NewTunnel creates a Tunnel around an existing outbound session.
+func NewTunnel(session *Session) *Tunnel {
 	return &Tunnel{
 		session:   session,
 		upstreams: make(map[uint8]Upstream),

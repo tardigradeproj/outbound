@@ -374,8 +374,21 @@ func TestAccept(t *testing.T) {
 		t.Fatalf("bad")
 	}
 
-	errCh := make(chan error, 4)
-	acceptOne := func(streamFunc func() (*Stream, error), expectID uint32) {
+	errCh := make(chan error, 6)
+
+	// acceptOne accepts a stream and closes it without checking the ID.
+	// Accept ordering is non-deterministic, so ID checks belong on the open side.
+	acceptOne := func(streamFunc func() (*Stream, error)) {
+		stream, err := streamFunc()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		errCh <- stream.Close()
+	}
+
+	// openOne opens a stream and verifies it received the expected stream ID.
+	openOne := func(streamFunc func() (*Stream, error), expectID uint32) {
 		stream, err := streamFunc()
 		if err != nil {
 			errCh <- err
@@ -385,28 +398,28 @@ func TestAccept(t *testing.T) {
 			errCh <- fmt.Errorf("bad: %v", id)
 			return
 		}
-		if err := stream.Close(); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
+		errCh <- stream.Close()
 	}
 
-	go acceptOne(server.AcceptStream, 1)
-	go acceptOne(client.AcceptStream, 2)
-	go acceptOne(client.AcceptStream, 4)
+	go acceptOne(server.AcceptStream)
+	go acceptOne(client.AcceptStream)
+	go acceptOne(client.AcceptStream)
 
-	go acceptOne(func() (*Stream, error) {
-		return server.OpenStream(1)
-	}, 2)
-	go acceptOne(func() (*Stream, error) {
-		return server.OpenStream(1)
-	}, 4)
-	go acceptOne(func() (*Stream, error) {
-		return client.OpenStream(1)
-	}, 1)
+	go openOne(func() (*Stream, error) { return client.OpenStream(1) }, 1)
 
-	drainErrorsUntil(t, errCh, 4, time.Second, "timeout")
+	// Serialize the two server opens so their IDs are deterministic (2, then 4).
+	// Running them concurrently would race on nextStreamID, making expected IDs unpredictable.
+	firstDone := make(chan struct{})
+	go func() {
+		openOne(func() (*Stream, error) { return server.OpenStream(1) }, 2)
+		close(firstDone)
+	}()
+	go func() {
+		<-firstDone
+		openOne(func() (*Stream, error) { return server.OpenStream(1) }, 4)
+	}()
+
+	drainErrorsUntil(t, errCh, 6, time.Second, "timeout")
 }
 
 func TestOpenStreamTimeout(t *testing.T) {
