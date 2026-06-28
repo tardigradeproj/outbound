@@ -76,7 +76,7 @@ func cloud() {
         panic(err)
     }
 
-    tunnel := outbound.New(session)
+    tunnel := outbound.NewTunnel(session)
 
     // Opens a transparent pipe to the worker's upstream 1 (127.0.0.1:8080).
     c, err := tunnel.Dial(context.Background(), 1)

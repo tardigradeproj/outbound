@@ -29,7 +29,7 @@ func ExampleTunnel_Dial() {
 		cn.Write([]byte("hello"))
 	}()
 
-	workerTunnel := outbound.New(workerSession)
+	workerTunnel := outbound.NewTunnel(workerSession)
 	workerTunnel.Register(outbound.Upstream{
 		Id:   1,
 		Name: "greeter",
@@ -38,7 +38,7 @@ func ExampleTunnel_Dial() {
 	go workerTunnel.Serve(context.Background())
 
 	// Cloud side: open a connection to upstream 1 and read its response.
-	cloudTunnel := outbound.New(cloudSession)
+	cloudTunnel := outbound.NewTunnel(cloudSession)
 	conn, err := cloudTunnel.Dial(context.Background(), 1)
 	if err != nil {
 		panic(err)
