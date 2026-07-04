@@ -34,11 +34,12 @@ func TestTunnelUnregisterWhileConnectionActive(t *testing.T) {
 	}()
 
 	clientSession, serverSession := testClientServer(t)
-	workerTunnel := NewTunnel(clientSession)
-	workerTunnel.Register(Upstream{Id: 7, Name: "echo", Dial: TCPUpstream(ln.Addr().String())})
+	reg := NewRegistry()
+	reg.Register(Upstream{Id: 7, Name: "echo", Dial: TCPUpstream(ln.Addr().String())})
+	workerTunnel := NewTunnel(clientSession, reg)
 	go workerTunnel.Serve(context.Background())
 
-	cloudTunnel := NewTunnel(serverSession)
+	cloudTunnel := NewTunnel(serverSession, NewRegistry())
 
 	// Establish the first connection and confirm it is live before unregistering.
 	cnn1, err := cloudTunnel.Dial(context.Background(), 7)
@@ -60,7 +61,7 @@ func TestTunnelUnregisterWhileConnectionActive(t *testing.T) {
 	}
 
 	// Unregister the upstream while cnn1 is still open.
-	workerTunnel.Unregister(7)
+	reg.Unregister(7)
 
 	// The live connection must still work after Unregister.
 	msg := []byte("still alive")
@@ -92,11 +93,11 @@ func TestTunnelUnregisterWhileConnectionActive(t *testing.T) {
 func TestTunnelDialUnknownUpstreamID(t *testing.T) {
 	clientSession, serverSession := testClientServer(t)
 
-	workerTunnel := NewTunnel(clientSession)
 	// Intentionally register nothing — upstream ID 99 is unknown.
+	workerTunnel := NewTunnel(clientSession, NewRegistry())
 	go workerTunnel.Serve(context.Background())
 
-	cloudTunnel := NewTunnel(serverSession)
+	cloudTunnel := NewTunnel(serverSession, NewRegistry())
 	cnn, err := cloudTunnel.Dial(context.Background(), 99)
 	if err != nil {
 		t.Fatalf("Dial should succeed at the outbound level: %v", err)
@@ -142,15 +143,16 @@ func TestTunnelConcurrentDials(t *testing.T) {
 	}()
 
 	clientSession, serverSession := testClientServer(t)
-	workerTunnel := NewTunnel(clientSession)
-	workerTunnel.Register(Upstream{
+	reg := NewRegistry()
+	reg.Register(Upstream{
 		Id:   1,
 		Name: "concurrent",
 		Dial: TCPUpstream(ln.Addr().String()),
 	})
+	workerTunnel := NewTunnel(clientSession, reg)
 	go workerTunnel.Serve(context.Background())
 
-	cloudTunnel := NewTunnel(serverSession)
+	cloudTunnel := NewTunnel(serverSession, NewRegistry())
 
 	type result struct {
 		idx int
@@ -213,7 +215,7 @@ func TestTunnelMultipleUpstreamsRouteByID(t *testing.T) {
 	}
 
 	clientSession, serverSession := testClientServer(t)
-	workerTunnel := NewTunnel(clientSession)
+	reg := NewRegistry()
 
 	for _, u := range upstreams {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -232,16 +234,17 @@ func TestTunnelMultipleUpstreamsRouteByID(t *testing.T) {
 			_, _ = cn.Write([]byte(msg))
 		}()
 
-		workerTunnel.Register(Upstream{
+		reg.Register(Upstream{
 			Id:   u.id,
 			Name: u.message,
 			Dial: TCPUpstream(ln.Addr().String()),
 		})
 	}
 
+	workerTunnel := NewTunnel(clientSession, reg)
 	go workerTunnel.Serve(context.Background())
 
-	cloudTunnel := NewTunnel(serverSession)
+	cloudTunnel := NewTunnel(serverSession, NewRegistry())
 
 	for _, u := range upstreams {
 		cnn, err := cloudTunnel.Dial(context.Background(), u.id)
@@ -292,15 +295,16 @@ func TestTunnelLargePayloadStreaming(t *testing.T) {
 	}()
 
 	clientSession, serverSession := testClientServer(t)
-	workerTunnel := NewTunnel(clientSession)
-	workerTunnel.Register(Upstream{
+	reg := NewRegistry()
+	reg.Register(Upstream{
 		Id:   1,
 		Name: "echo",
 		Dial: TCPUpstream(ln.Addr().String()),
 	})
+	workerTunnel := NewTunnel(clientSession, reg)
 	go workerTunnel.Serve(context.Background())
 
-	cloudTunnel := NewTunnel(serverSession)
+	cloudTunnel := NewTunnel(serverSession, NewRegistry())
 	cnn, err := cloudTunnel.Dial(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
@@ -345,15 +349,16 @@ func TestTunnelSendingTrafficToBothEnds(t *testing.T) {
 		_, _ = cn.Write([]byte("I'm here"))
 	}()
 	clientSession, serverSession := testClientServer(t)
-	workerTunnel := NewTunnel(clientSession)
-	workerTunnel.Register(Upstream{
+	reg := NewRegistry()
+	reg.Register(Upstream{
 		Id:   12,
 		Name: "test",
 		Dial: TCPUpstream(listenAddr),
 	})
+	workerTunnel := NewTunnel(clientSession, reg)
 	go workerTunnel.Serve(context.Background())
 
-	cloudTunnel := NewTunnel(serverSession)
+	cloudTunnel := NewTunnel(serverSession, NewRegistry())
 	cnn, err := cloudTunnel.Dial(context.Background(), 12)
 
 	if err != nil {

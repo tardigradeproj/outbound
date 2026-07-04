@@ -29,16 +29,17 @@ func ExampleTunnel_Dial() {
 		cn.Write([]byte("hello"))
 	}()
 
-	workerTunnel := outbound.NewTunnel(workerSession)
-	workerTunnel.Register(outbound.Upstream{
+	reg := outbound.NewRegistry()
+	reg.Register(outbound.Upstream{
 		Id:   1,
 		Name: "greeter",
 		Dial: outbound.TCPUpstream(ln.Addr().String()),
 	})
+	workerTunnel := outbound.NewTunnel(workerSession, reg)
 	go workerTunnel.Serve(context.Background())
 
 	// Cloud side: open a connection to upstream 1 and read its response.
-	cloudTunnel := outbound.NewTunnel(cloudSession)
+	cloudTunnel := outbound.NewTunnel(cloudSession, outbound.NewRegistry())
 	conn, err := cloudTunnel.Dial(context.Background(), 1)
 	if err != nil {
 		panic(err)

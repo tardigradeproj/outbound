@@ -28,34 +28,51 @@ func TCPUpstream(addr string) DialFunc {
 	}
 }
 
-// Tunnel wraps a outbound session and routes streams to local upstreams.
-type Tunnel struct {
-	session   *Session
+// Registry holds a shared set of upstreams, safe for concurrent use.
+// A single Registry can be shared across multiple Tunnels so upstreams
+// only need to be registered once regardless of how many connections exist.
+type Registry struct {
 	mu        sync.RWMutex
 	upstreams map[uint8]Upstream
 }
 
-// NewTunnel creates a Tunnel around an existing outbound session.
-func NewTunnel(session *Session) *Tunnel {
-	return &Tunnel{
-		session:   session,
-		upstreams: make(map[uint8]Upstream),
-	}
+// NewRegistry creates an empty Registry.
+func NewRegistry() *Registry {
+	return &Registry{upstreams: make(map[uint8]Upstream)}
 }
 
 // Register adds a local upstream reachable by remote dialers.
-// ID must be unique within this tunnel.
-func (t *Tunnel) Register(u Upstream) {
-	t.mu.Lock()
-	t.upstreams[u.Id] = u
-	t.mu.Unlock()
+// ID must be unique within this registry.
+func (r *Registry) Register(u Upstream) {
+	r.mu.Lock()
+	r.upstreams[u.Id] = u
+	r.mu.Unlock()
 }
 
 // Unregister removes a local upstream by ID.
-func (t *Tunnel) Unregister(id uint8) {
-	t.mu.Lock()
-	delete(t.upstreams, id)
-	t.mu.Unlock()
+func (r *Registry) Unregister(id uint8) {
+	r.mu.Lock()
+	delete(r.upstreams, id)
+	r.mu.Unlock()
+}
+
+func (r *Registry) lookup(id uint8) (Upstream, bool) {
+	r.mu.RLock()
+	u, ok := r.upstreams[id]
+	r.mu.RUnlock()
+	return u, ok
+}
+
+// Tunnel wraps an outbound session and routes streams to upstreams in a Registry.
+type Tunnel struct {
+	session  *Session
+	registry *Registry
+}
+
+// NewTunnel creates a Tunnel around an existing outbound session.
+// The registry is shared and must not be nil.
+func NewTunnel(session *Session, registry *Registry) *Tunnel {
+	return &Tunnel{session: session, registry: registry}
 }
 
 // Dial opens a stream to an upstream on the remote side identified by its ID.
@@ -88,9 +105,7 @@ func (t *Tunnel) Close() error {
 func (t *Tunnel) handleStream(ctx context.Context, stream *Stream) {
 	defer func() { _ = stream.Close() }()
 
-	t.mu.RLock()
-	upstream, ok := t.upstreams[stream.UpstreamID()]
-	t.mu.RUnlock()
+	upstream, ok := t.registry.lookup(stream.UpstreamID())
 	if !ok {
 		return
 	}
