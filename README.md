@@ -41,7 +41,18 @@ It can be used as a guide to implementors of interoperable libraries.
 This lets a worker behind NAT register services that a cloud host can dial by name.
 
 ```go
-// Worker side (behind NAT): register a local HTTP service and serve streams.
+// Worker side (behind NAT): build a registry once, then reuse it for every
+// reconnection so upstreams only need to be registered once.
+var reg = outbound.NewRegistry()
+
+func init() {
+    reg.Register(outbound.Upstream{
+        Id:   1,
+        Name: "http",
+        Dial: outbound.TCPUpstream("127.0.0.1:8080"),
+    })
+}
+
 func worker() {
     conn, err := net.Dial("tcp", "cloud-host:1234")
     if err != nil {
@@ -53,15 +64,8 @@ func worker() {
         panic(err)
     }
 
-    tunnel := outbound.New(session)
-    tunnel.Register(outbound.Upstream{
-        Id:   1,
-        Name: "http",
-        Dial: outbound.TCPUpstream("127.0.0.1:8080"),
-    })
-
     // Blocks until the session closes or ctx is cancelled.
-    tunnel.Serve(context.Background())
+    outbound.NewTunnel(session, reg).Serve(context.Background())
 }
 
 // Cloud side: dial the worker's upstream by ID and use it like a plain net.Conn.
@@ -76,7 +80,7 @@ func cloud() {
         panic(err)
     }
 
-    tunnel := outbound.NewTunnel(session)
+    tunnel := outbound.NewTunnel(session, outbound.NewRegistry())
 
     // Opens a transparent pipe to the worker's upstream 1 (127.0.0.1:8080).
     c, err := tunnel.Dial(context.Background(), 1)
