@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 // DialFunc is how an upstream is reached.
@@ -100,6 +101,41 @@ func (t *Tunnel) Serve(ctx context.Context) error {
 // Close closes the tunnel and the underlying session.
 func (t *Tunnel) Close() error {
 	return t.session.Close()
+}
+
+// IsClosed reports whether the underlying session has been closed.
+func (t *Tunnel) IsClosed() bool {
+	return t.session.IsClosed()
+}
+
+// CloseChan returns a channel that is closed when the underlying session closes.
+func (t *Tunnel) CloseChan() <-chan struct{} {
+	return t.session.CloseChan()
+}
+
+// NumStreams returns the number of currently open streams.
+func (t *Tunnel) NumStreams() int {
+	return t.session.NumStreams()
+}
+
+// Ping measures the round-trip time to the remote end.
+func (t *Tunnel) Ping() (time.Duration, error) {
+	return t.session.Ping()
+}
+
+// GoAway signals the remote end to stop opening new streams.
+func (t *Tunnel) GoAway() error {
+	return t.session.GoAway()
+}
+
+// LocalAddr returns the local address of the underlying connection.
+func (t *Tunnel) LocalAddr() net.Addr {
+	return t.session.LocalAddr()
+}
+
+// RemoteAddr returns the remote address of the underlying connection.
+func (t *Tunnel) RemoteAddr() net.Addr {
+	return t.session.RemoteAddr()
 }
 
 func (t *Tunnel) handleStream(ctx context.Context, stream *Stream) {
