@@ -158,16 +158,33 @@ func (t *Tunnel) handleStream(ctx context.Context, stream *Stream) {
 // tunnelPipe copies bidirectionally between a and b.
 // It returns when both directions are done.
 func tunnelPipe(a, b net.Conn) {
-	done := make(chan struct{}, 2)
-	cp := func(dst, src net.Conn) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	pipe := func(dst, src net.Conn) {
+		defer wg.Done()
 		_, _ = io.Copy(dst, src)
-		// Close both ends so the other direction unblocks.
-		_ = dst.Close()
-		_ = src.Close()
-		done <- struct{}{}
+		// Half-close the write side of dst so it knows we are done
+		// sending, but leave src open so the other direction can still
+		// drain (e.g. the upstream response arriving after the request
+		// is fully sent).
+		closeWrite(dst)
 	}
-	go cp(a, b)
-	go cp(b, a)
-	<-done
-	<-done
+	go pipe(b, a)
+	go pipe(a, b)
+	wg.Wait()
+	_ = a.Close()
+	_ = b.Close()
+}
+
+// closeWrite signals EOF on the write side of c without fully closing it.
+// Falls back to Close for connections that do not support half-close.
+func closeWrite(c net.Conn) {
+	type halfCloser interface {
+		CloseWrite() error
+	}
+	if hc, ok := c.(halfCloser); ok {
+		_ = hc.CloseWrite()
+	} else {
+		_ = c.Close()
+	}
 }
