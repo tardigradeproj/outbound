@@ -155,6 +155,25 @@ func (t *Tunnel) handleStream(ctx context.Context, stream *Stream) {
 	tunnelPipe(stream, conn)
 }
 
+// copyBufferPool holds reusable scratch buffers for tunnelPipe, avoiding a
+// fresh allocation per direction on every proxied connection.
+var copyBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 32*1024)
+		return &buf
+	},
+}
+
+// onlyReader/onlyWriter strip any optional interfaces (like io.WriterTo or
+// io.ReaderFrom) from the wrapped value. net.TCPConn implements both, and
+// io.CopyBuffer silently was ignoring the buffer it's given in favor of those
+// fast paths, which then allocate their own scratch buffer internally since
+// the peer here is a *Stream, not a raw file descriptor eligible for true
+// zero-copy using splice/sendfile system calls. Hiding the interfaces forces the pooled buffer below to
+// actually be used.
+type onlyReader struct{ io.Reader }
+type onlyWriter struct{ io.Writer }
+
 // tunnelPipe copies bidirectionally between a and b.
 // It returns when both directions are done.
 func tunnelPipe(a, b net.Conn) {
@@ -162,7 +181,9 @@ func tunnelPipe(a, b net.Conn) {
 	wg.Add(2)
 	pipe := func(dst, src net.Conn) {
 		defer wg.Done()
-		_, _ = io.Copy(dst, src)
+		bufp := copyBufferPool.Get().(*[]byte)
+		defer copyBufferPool.Put(bufp)
+		_, _ = io.CopyBuffer(onlyWriter{dst}, onlyReader{src}, *bufp)
 		// Half-close the write side of dst so it knows we are done
 		// sending, but leave src open so the other direction can still
 		// drain (e.g. the upstream response arriving after the request

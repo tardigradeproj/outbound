@@ -10,6 +10,10 @@ tunnel_test-cases.md
 stream.md
 lifecycle.md
 .idea
+performance.md
+1.md
+cpu.out
+mem.out
 .DS_Store
 # Architecture specific extensions/prefixes
 *.[568vq]
