@@ -73,7 +73,6 @@ func BenchmarkTunnelDial(b *testing.B) {
 	recv := make([]byte, 1)
 	b.ReportAllocs()
 	b.ResetTimer()
-
 	for b.Loop() {
 		cnn, err := cloud.Dial(context.Background(), 1)
 		if err != nil {
@@ -100,10 +99,7 @@ func BenchmarkTunnelSendRecv4096(b *testing.B) { benchmarkTunnelSendRecv(b, 4096
 
 // benchmarkTunnelSendRecv measures single-stream, steady-state round-trip
 // cost through an already-established Tunnel connection: write size bytes,
-// read size bytes back once the upstream echoes them. This is the
-// Tunnel-level analogue of benchmarkSendRecv in bench_test.go, but
-// request/response shaped (matching how a real upstream behaves) rather
-// than one-directional streaming.
+// read size bytes back once the upstream echoes them.
 func benchmarkTunnelSendRecv(b *testing.B, size int) {
 	reg := NewRegistry()
 	benchEchoUpstream(b, reg, 1)
